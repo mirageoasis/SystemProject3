@@ -98,8 +98,6 @@ int mm_init(void)
     return 0;
 }
 
-
-
 void *mm_malloc(size_t size)
 {
     size_t asize;      /* Adjusted block size */
@@ -124,7 +122,7 @@ void *mm_malloc(size_t size)
     }
 
     /* No fit found. Get more memory and place the block */
-    extendsize = MAX(asize, CHUNKSIZE); // line:vm:mm:growheap1
+    extendsize = MAX(asize, CHUNKSIZE);
     if ((bp = extend_heap(extendsize / WSIZE)) == NULL)
         return NULL;  
     place(bp, asize); 
@@ -133,7 +131,6 @@ void *mm_malloc(size_t size)
 #endif
     return bp;
 }
-
 
 void mm_free(void *bp)
 {
@@ -189,11 +186,13 @@ static void *coalesce(void *bp)
     return bp;
 }
 
-
 void *mm_realloc(void *ptr, size_t size)
 {
     size_t prevsize;
     void *newptr;
+
+    if(size == 0)
+        return NULL;
 
     prevsize = GET_SIZE(HDRP(ptr));
     // 들어온 사이즈가 작다면 
@@ -215,9 +214,6 @@ void *mm_realloc(void *ptr, size_t size)
     return newptr;
 }
 
-/*
- * checkheap - We don't check anything right now.
- */
 void mm_checkheap(int verbose)
 {
     int allocFlag = 0;
@@ -274,14 +270,6 @@ void mm_checkheap(int verbose)
     }
 }
 
-/*
- * The remaining routines are internal helper routines
- */
-
-/*
- * extend_heap - Extend heap with free block and return its block pointer
- */
-/* $begin mmextendheap */
 static void *extend_heap(size_t words)
 {
     char *bp;
@@ -300,16 +288,8 @@ static void *extend_heap(size_t words)
     /* Coalesce if the previous block was free */
     return coalesce(bp); // line:vm:mm:returnblock
 }
-/* $end mmextendheap */
 
-/*
- * place - Place block of asize bytes at start of free block bp
- *         and split if remainder would be at least minimum block size
- */
-/* $begin mmplace */
-/* $begin mmplace-proto */
 static void place(void *bp, size_t asize)
-/* $end mmplace-proto */
 {
     size_t csize = GET_SIZE(HDRP(bp));
 
@@ -327,12 +307,9 @@ static void place(void *bp, size_t asize)
         PUT(FTRP(bp), PACK(csize, 1));
     }
 }
-/* $end mmplace */
 
 static void *find_fit(size_t asize)
-/* $end mmfirstfit-proto */
 {
-    /* $end mmfirstfit */
 
 #ifdef NEXT_FIT
     /* Next fit search */
