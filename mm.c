@@ -232,13 +232,7 @@ void mm_checkheap(int verbose)
         }
         // 주소 check
 
-        // 1번 앞에가 alloc 이 되어있지 않고 자신도 alloc 이 아니라면 오류 방출
-
-        if (!GET_ALLOC(HDRP(bp)) && !allocFlag)
-        {
-            fprintf(stdout, "coalescing failed! location : %p\n", bp);
-            exit(1);
-        }
+        
 
         // 앞뒤로 비교
         if (GET_ALLOC(HDRP(bp)) != GET_ALLOC(FTRP(bp)))
@@ -260,15 +254,21 @@ void mm_checkheap(int verbose)
             exit(1);
         }
 
-        if(bp != heap_listp)
+        if (bp != heap_listp)
         {
-            if(GET_SIZE(bp - WSIZE * 2) != GET_SIZE(FTRP(PREV_BLKP(bp))))
+            if (GET_SIZE(bp - WSIZE * 2) != GET_SIZE(FTRP(PREV_BLKP(bp))))
             {
                 fprintf(stdout, "malloc overrun pair check failed! location : %p\n", bp);
                 exit(1);
-            }        
-        }
+            }
+            // 1번 앞에가 alloc 이 되어있지 않고 자신도 alloc 이 아니라면 오류 방출
 
+            if (!GET_ALLOC(HDRP(bp)) && !GET_ALLOC(HDRP(PREV_BLKP(bp))))
+            {
+                fprintf(stdout, "coalescing failed! location : %p\n", bp);
+                exit(1);
+            }
+        }
 
         allocFlag = GET_ALLOC(HDRP(bp));
     }
