@@ -32,7 +32,7 @@ team_t team = {
     "kimhw0820@sogang.ac.kr",
 };
 
-#define BEST_FIT
+#define NEXT_FIT
 #define TESTx
 
 /* $begin mallocmacros */
@@ -194,14 +194,17 @@ void *mm_realloc(void *ptr, size_t size)
 {
     size_t prevsize;
     void *newptr;
+
+    prevsize = GET_SIZE(HDRP(ptr));
+    // 들어온 사이즈가 작다면 
+    if (size < prevsize)
+        size = prevsize;
+
     /*malloc 에 오류가 발생할 때 realloc이 fail 했음을 알림*/
     if(!(newptr = mm_malloc(size)))
-        return 0;
+        return NULL;
 
     /* Copy the old data. */
-    prevsize = GET_SIZE(HDRP(ptr));
-    if (size < prevsize)
-        prevsize = size;
     memcpy(newptr, ptr, prevsize);
 
     /* Free the old block. */
