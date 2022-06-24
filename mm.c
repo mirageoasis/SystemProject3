@@ -14,6 +14,7 @@
 #include <assert.h>
 #include <unistd.h>
 #include <string.h>
+#include "config.h"
 
 #include "mm.h"
 #include "memlib.h"
@@ -31,7 +32,7 @@ team_t team = {
     "kimhw0820@sogang.ac.kr",
 };
 
-#define NEXT_FITx
+#define NEXT_FIT
 
 /* $begin mallocmacros */
 /* Basic constants and macros */
@@ -142,6 +143,7 @@ void *mm_malloc(size_t size)
     if ((bp = extend_heap(extendsize / WSIZE)) == NULL)
         return NULL;  // line:vm:mm:growheap2
     place(bp, asize); // line:vm:mm:growheap3
+    //mm_checkheap(0);
     return bp;
 }
 /* $end mmmalloc */
@@ -213,7 +215,8 @@ static void *coalesce(void *bp)
 #ifdef NEXT_FIT
     /* Make sure the rover isn't pointing into the free block */
     /* that we just coalesced */
-    if ((rover > (char *)bp) && (rover < NEXT_BLKP(bp)))
+
+    if((rover > (char *)bp))
         rover = bp;
 #endif
     /* $begin mmfree */
@@ -258,7 +261,7 @@ void *mm_realloc(void *ptr, size_t size)
 
     /* Free the old block. */
     mm_free(ptr);
-
+    mm_checkheap(0);
     return newptr;
 }
 
@@ -266,7 +269,39 @@ void *mm_realloc(void *ptr, size_t size)
  * checkheap - We don't check anything right now.
  */
 void mm_checkheap(int verbose)
-{
+{ 
+    int allocFlag = 0;
+    for(char* bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)){
+        // alloc 이 되어 있지 않고 
+        // 주소 check
+        if(bp < heap_listp || bp > heap_listp + MAX_HEAP){
+            fprintf(stdout, "location out of range between %p ~ %p! location : %p\n", heap_listp, heap_listp + MAX_HEAP, bp);
+            exit(1);
+        }
+        // 주소 check
+
+        // 1번 앞에가 alloc 이 되어있지 않고 자신도 alloc 이 아니라면 오류 방출
+
+        if(!GET_ALLOC(HDRP(bp)) && !allocFlag){
+            fprintf(stdout, "coalescing failed! location : %p\n", bp);
+            exit(1);
+        }
+
+        // 앞뒤로 비교
+        if(GET_ALLOC(HDRP(bp)) != GET_ALLOC(FTRP(bp))){
+            fprintf(stdout, "alloc pair check failed! location : %p\n", bp);
+            exit(1);
+        }
+
+        if(GET_SIZE(HDRP(bp)) != GET_SIZE(FTRP(bp))){
+            fprintf(stdout, "size pair check failed! location : %p\n", bp);
+            exit(1);
+        }
+        // 앞뒤로 비교
+        
+        allocFlag = GET_ALLOC(HDRP(bp));
+    }
+
 }
 
 /*
@@ -324,11 +359,6 @@ static void place(void *bp, size_t asize)
 }
 /* $end mmplace */
 
-/*
- * find_fit - Find a fit for a block with asize bytes
- */
-/* $begin mmfirstfit */
-/* $begin mmfirstfit-proto */
 static void *find_fit(size_t asize)
 /* $end mmfirstfit-proto */
 {
@@ -336,20 +366,27 @@ static void *find_fit(size_t asize)
 
 #ifdef NEXT_FIT
     /* Next fit search */
-    char *oldrover = rover;
+    char *temp = rover;
 
     /* Search from the rover to the end of list */
-    for (; GET_SIZE(HDRP(rover)) > 0; rover = NEXT_BLKP(rover))
-        if (!GET_ALLOC(HDRP(rover)) && (asize <= GET_SIZE(HDRP(rover))))
-            return rover;
 
-    /* search from start of list to old rover */
-    for (rover = heap_listp; rover < oldrover; rover = NEXT_BLKP(rover))
-        if (!GET_ALLOC(HDRP(rover)) && (asize <= GET_SIZE(HDRP(rover))))
+    for(; GET_SIZE(HDRP(rover)) > 0; rover = NEXT_BLKP(rover)){
+        // alloc 이 되어 있지 않고 
+        if(!GET_ALLOC(HDRP(rover)) && asize <= GET_SIZE(HDRP(rover))){
             return rover;
+        }
+    }
+
+    for(rover = heap_listp; rover < temp; rover = NEXT_BLKP(rover)){
+        // alloc 이 되어 있지 않고 
+        if(!GET_ALLOC(HDRP(rover)) && asize <= GET_SIZE(HDRP(rover))){
+            return rover;
+        }
+    }
 
     return NULL; /* no fit found */
-#elif FIRST_FIT
+#endif
+#ifdef FRIST_FIT
     /* $begin mmfirstfit */
     /* First fit search */
     void *bp;
@@ -362,7 +399,8 @@ static void *find_fit(size_t asize)
         }
     }
     return NULL; /* No fit */
-#else
+#endif
+#ifdef BEST_FIT
     void *ret = NULL;
     void *bp;
     // asize <= GET_SIZE(HDRP(bp))) 할당할 사이즈가 현재 보고 있는 사이즈 보다 작은 경우
@@ -387,60 +425,4 @@ static void *find_fit(size_t asize)
     return ret; /* No fit */
 /* $end mmfirstfit */
 #endif
-}
-
-static void printblock(void *bp)
-{
-    size_t hsize, halloc, fsize, falloc;
-
-    checkheap(0);
-    hsize = GET_SIZE(HDRP(bp));
-    halloc = GET_ALLOC(HDRP(bp));
-    fsize = GET_SIZE(FTRP(bp));
-    falloc = GET_ALLOC(FTRP(bp));
-
-    if (hsize == 0)
-    {
-        printf("%p: EOL\n", bp);
-        return;
-    }
-
-    /*  printf("%p: header: [%p:%c] footer: [%p:%c]\n", bp,
-    hsize, (halloc ? 'a' : 'f'),
-    fsize, (falloc ? 'a' : 'f')); */
-}
-
-static void checkblock(void *bp)
-{
-    if ((size_t)bp % 8)
-        printf("Error: %p is not doubleword aligned\n", bp);
-    if (GET(HDRP(bp)) != GET(FTRP(bp)))
-        printf("Error: header does not match footer\n");
-}
-
-/*
- * checkheap - Minimal check of the heap for consistency
- */
-void checkheap(int verbose)
-{
-    char *bp = heap_listp;
-
-    if (verbose)
-        printf("Heap (%p):\n", heap_listp);
-
-    if ((GET_SIZE(HDRP(heap_listp)) != DSIZE) || !GET_ALLOC(HDRP(heap_listp)))
-        printf("Bad prologue header\n");
-    checkblock(heap_listp);
-
-    for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
-    {
-        if (verbose)
-            printblock(bp);
-        checkblock(bp);
-    }
-
-    if (verbose)
-        printblock(bp);
-    if ((GET_SIZE(HDRP(bp)) != 0) || !(GET_ALLOC(HDRP(bp))))
-        printf("Bad epilogue header\n");
 }
