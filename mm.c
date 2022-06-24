@@ -32,7 +32,8 @@ team_t team = {
     "kimhw0820@sogang.ac.kr",
 };
 
-#define NEXT_FIT
+#define BEST_FIT
+#define TESTx
 
 /* $begin mallocmacros */
 /* Basic constants and macros */
@@ -65,7 +66,7 @@ team_t team = {
 /* Global variables */
 static char *heap_listp = 0; /* Pointer to first block */
 #ifdef NEXT_FIT
-static char *rover; /* Next fit rover */
+static char *allocPointer; /* Next fit allocPointer */
 #endif
 
 /* Function prototypes for internal helper routines */
@@ -73,10 +74,6 @@ static void *extend_heap(size_t words);
 static void place(void *bp, size_t asize);
 static void *find_fit(size_t asize);
 static void *coalesce(void *bp);
-static void printblock(void *bp);
-static void checkheap(int verbose);
-static void checkblock(void *bp);
-
 /*
  * mm_init - Initialize the memory manager
  */
@@ -94,7 +91,7 @@ int mm_init(void)
     /* $end mminit */
 
 #ifdef NEXT_FIT
-    rover = heap_listp;
+    allocPointer = heap_listp;
 #endif
     /* $begin mminit */
 
@@ -143,7 +140,9 @@ void *mm_malloc(size_t size)
     if ((bp = extend_heap(extendsize / WSIZE)) == NULL)
         return NULL;  // line:vm:mm:growheap2
     place(bp, asize); // line:vm:mm:growheap3
-    //mm_checkheap(0);
+#ifdef TEST
+    mm_checkheap(0);
+#endif
     return bp;
 }
 /* $end mmmalloc */
@@ -170,6 +169,9 @@ void mm_free(void *bp)
     PUT(HDRP(bp), PACK(size, 0));
     PUT(FTRP(bp), PACK(size, 0));
     coalesce(bp);
+#ifdef TEST
+    mm_checkheap(0);
+#endif
 }
 
 /* $end mmfree */
@@ -213,11 +215,11 @@ static void *coalesce(void *bp)
     }
 /* $end mmfree */
 #ifdef NEXT_FIT
-    /* Make sure the rover isn't pointing into the free block */
+    /* Make sure the allocPointer isn't pointing into the free block */
     /* that we just coalesced */
 
-    if((rover > (char *)bp))
-        rover = bp;
+    if ((allocPointer > (char *)bp))
+        allocPointer = bp;
 #endif
     /* $begin mmfree */
     return bp;
@@ -261,7 +263,9 @@ void *mm_realloc(void *ptr, size_t size)
 
     /* Free the old block. */
     mm_free(ptr);
+#ifdef TEST
     mm_checkheap(0);
+#endif
     return newptr;
 }
 
@@ -269,12 +273,14 @@ void *mm_realloc(void *ptr, size_t size)
  * checkheap - We don't check anything right now.
  */
 void mm_checkheap(int verbose)
-{ 
+{
     int allocFlag = 0;
-    for(char* bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)){
-        // alloc 이 되어 있지 않고 
+    for (char *bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
+    {
+        // alloc 이 되어 있지 않고
         // 주소 check
-        if(bp < heap_listp || bp > heap_listp + MAX_HEAP){
+        if (bp < heap_listp || bp > heap_listp + MAX_HEAP)
+        {
             fprintf(stdout, "location out of range between %p ~ %p! location : %p\n", heap_listp, heap_listp + MAX_HEAP, bp);
             exit(1);
         }
@@ -282,26 +288,44 @@ void mm_checkheap(int verbose)
 
         // 1번 앞에가 alloc 이 되어있지 않고 자신도 alloc 이 아니라면 오류 방출
 
-        if(!GET_ALLOC(HDRP(bp)) && !allocFlag){
+        if (!GET_ALLOC(HDRP(bp)) && !allocFlag)
+        {
             fprintf(stdout, "coalescing failed! location : %p\n", bp);
             exit(1);
         }
 
         // 앞뒤로 비교
-        if(GET_ALLOC(HDRP(bp)) != GET_ALLOC(FTRP(bp))){
+        if (GET_ALLOC(HDRP(bp)) != GET_ALLOC(FTRP(bp)))
+        {
             fprintf(stdout, "alloc pair check failed! location : %p\n", bp);
             exit(1);
         }
 
-        if(GET_SIZE(HDRP(bp)) != GET_SIZE(FTRP(bp))){
+        if (GET_SIZE(HDRP(bp)) != GET_SIZE(FTRP(bp)))
+        {
             fprintf(stdout, "size pair check failed! location : %p\n", bp);
             exit(1);
         }
         // 앞뒤로 비교
-        
+
+        if (GET_SIZE(HDRP(bp)) != GET_SIZE(FTRP(bp)))
+        {
+            fprintf(stdout, "size pair check failed! location : %p\n", bp);
+            exit(1);
+        }
+
+        if(bp != heap_listp)
+        {
+            if(GET_SIZE(bp - WSIZE * 2) != GET_SIZE(FTRP(PREV_BLKP(bp))))
+            {
+                fprintf(stdout, "malloc overrun pair check failed! location : %p\n", bp);
+                exit(1);
+            }        
+        }
+
+
         allocFlag = GET_ALLOC(HDRP(bp));
     }
-
 }
 
 /*
@@ -366,21 +390,28 @@ static void *find_fit(size_t asize)
 
 #ifdef NEXT_FIT
     /* Next fit search */
-    char *temp = rover;
+    char *temp = allocPointer;
 
-    /* Search from the rover to the end of list */
+    /* Search from the allocPointer to the end of list */
 
-    for(; GET_SIZE(HDRP(rover)) > 0; rover = NEXT_BLKP(rover)){
-        // alloc 이 되어 있지 않고 
-        if(!GET_ALLOC(HDRP(rover)) && asize <= GET_SIZE(HDRP(rover))){
-            return rover;
+    for (; GET_SIZE(HDRP(allocPointer)) > 0; allocPointer = NEXT_BLKP(allocPointer))
+    {
+        // alloc 이 되어 있지 않고  현 블록의 사이즈가 새로 들어올 블럭의 사이즈 보다 작은 경우
+        if (!GET_ALLOC(HDRP(allocPointer)) && asize <= GET_SIZE(HDRP(allocPointer)))
+        {
+            return allocPointer;
         }
+
     }
 
-    for(rover = heap_listp; rover < temp; rover = NEXT_BLKP(rover)){
-        // alloc 이 되어 있지 않고 
-        if(!GET_ALLOC(HDRP(rover)) && asize <= GET_SIZE(HDRP(rover))){
-            return rover;
+    allocPointer = heap_listp;
+
+    for (; allocPointer < temp; allocPointer = NEXT_BLKP(allocPointer))
+    {
+        // alloc 이 되어 있지 않고
+        if (!GET_ALLOC(HDRP(allocPointer)) && asize <= GET_SIZE(HDRP(allocPointer)))
+        {
+            return allocPointer;
         }
     }
 
@@ -409,11 +440,11 @@ static void *find_fit(size_t asize)
     for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
     {
         // 할당이 가능할 시에
-        if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))) 
+        if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
         {
             if (ret)
             {
-                if(GET_SIZE(HDRP(bp)) < GET_SIZE(HDRP(ret)))
+                if (GET_SIZE(HDRP(bp)) < GET_SIZE(HDRP(ret)))
                     ret = bp;
             }
             else
